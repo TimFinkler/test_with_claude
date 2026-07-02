@@ -168,7 +168,7 @@
     </div>
     <div class="note">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="#A6791E" stroke-width="1.6"/><path d="M12 11v6M12 7.5v.5" stroke="#A6791E" stroke-width="1.8" stroke-linecap="round"/></svg>
-      <span><b>Prototyp:</b> Das Auslesen von Inserats<b>text</b> funktioniert live. Reine Links kann ein Browser nicht öffnen (Portale blockieren das) — im Produkt übernimmt das ein eigener Kompass-Dienst.</span>
+      <span><b>Prototyp:</b> Kompass versucht Links live über einen Reader-Proxy auszulesen. Klappt bei vielen Portalen — manche blockieren aktiv. Sicher funktioniert immer: den <b>Inseratstext</b> einfügen.</span>
     </div>
   </section>
 
@@ -196,9 +196,12 @@ function deNum(s){ if(!s) return NaN; return parseFloat(String(s).replace(/\./g,
 function parseListing(text){
   const t=text.replace(/ /g," ");
   const grab=(re)=>{const m=t.match(re);return m?deNum(m[1]):NaN;};
-  let price=grab(/kaufpreis[^0-9]{0,25}([\d.]{4,})/i);
-  if(isNaN(price)){ // largest €-amount as fallback
-    const all=[...t.matchAll(/([\d.]{4,})\s*(?:€|eur)/gi)].map(m=>deNum(m[1])).filter(v=>v>=20000);
+  let price=grab(/kaufpreis[^0-9]{0,25}([\d.,]{4,})/i);
+  if(isNaN(price)){ // largest plausible €-amount as fallback
+    const all=[
+      ...[...t.matchAll(/([\d.,]{4,})\s*(?:€|eur\b)/gi)].map(m=>deNum(m[1])),
+      ...[...t.matchAll(/(?:€|eur)\s*([\d.,]{4,})/gi)].map(m=>deNum(m[1])),
+    ].filter(v=>v>=20000 && v<=50000000);
     if(all.length) price=Math.max(...all);
   }
   let area=grab(/([\d.,]{2,6})\s*m²/i);
@@ -419,10 +422,10 @@ function showCantRead(isUrl){
   const rep=$("report"); rep.classList.remove("show");
   rep.innerHTML=`
     <div class="panel" style="text-align:center;padding:34px 26px">
-      <h3 style="font-size:26px">${isUrl?"Diesen Link kann ich hier nicht öffnen":"Bitte Inserat einfügen"}</h3>
+      <h3 style="font-size:26px">${isUrl?"Konnte das Inserat nicht auslesen":"Bitte Inserat einfügen"}</h3>
       <p class="desc" style="max-width:52ch;margin:8px auto 4px;font-size:14px;line-height:1.6">
         ${isUrl
-          ? "Ein Browser darf fremde Portale wie Immowelt oder ImmoScout aus Sicherheitsgründen nicht selbst auslesen — und die Portale blockieren automatisches Auslesen zusätzlich aktiv. Im fertigen Produkt übernimmt das ein eigener Kompass-Dienst."
+          ? "Der Live-Abruf hat es versucht, aber dieses Portal hat die Anfrage blockiert oder keine erkennbaren Daten geliefert. Portale wie Immowelt wehren sich aktiv gegen automatisches Auslesen — im Produkt löst das ein robuster Kompass-Dienst."
           : "Ich konnte in Ihrer Eingabe keinen Kaufpreis erkennen."}
       </p>
       <p class="desc" style="max-width:52ch;margin:14px auto 0;font-size:14px;line-height:1.6;color:var(--ink2)">
@@ -442,14 +445,61 @@ function showCantRead(isUrl){
   rep.scrollIntoView({behavior:"smooth",block:"start"});
 }
 
-$("go").addEventListener("click",()=>{
+// --- Live-Read über öffentliche Reader-Proxys (holen die Seite serverseitig,
+//     umgehen so CORS und meist den Bot-Schutz). Läuft im Browser des Nutzers. ---
+const READERS=[
+  u=>({url:"https://r.jina.ai/"+u, mode:"text"}),
+  u=>({url:"https://api.allorigins.win/raw?url="+encodeURIComponent(u), mode:"text"}),
+  u=>({url:"https://corsproxy.io/?url="+encodeURIComponent(u), mode:"text"}),
+];
+async function fetchListing(url){
+  for(const mk of READERS){
+    const {url:proxyUrl}=mk(url);
+    try{
+      const ctrl=new AbortController(); const t=setTimeout(()=>ctrl.abort(),15000);
+      const res=await fetch(proxyUrl,{signal:ctrl.signal});
+      clearTimeout(t);
+      if(!res.ok) continue;
+      const text=await res.text();
+      if(text && text.length>200){
+        const parsed=parseListing(text);
+        if(parsed && parsed.price){ parsed.loc=parsed.loc||url; parsed.sourceUrl=url; return parsed; }
+      }
+    }catch(e){ /* nächster Proxy */ }
+  }
+  return null;
+}
+
+function showReading(){
+  const rep=$("report"); rep.classList.remove("show");
+  rep.innerHTML=`<div class="skeleton"><div class="sh">Objekt wird gelesen…</div><br><div class="shimmer"></div>
+    <p class="desc" style="margin-top:14px">Kompass ruft das Inserat ab und liest die Eckdaten aus.</p></div>`;
+  requestAnimationFrame(()=>rep.classList.add("show"));
+  rep.scrollIntoView({behavior:"smooth",block:"start"});
+}
+
+$("go").addEventListener("click",async()=>{
   const raw=$("src").value.trim();
   A={feesPct:10,equityPct:20,rate:3.6,amort:2,costsPct:22,rentg:2,valg:2,vac:3}; // reset
-  const looksUrl=/^https?:\/\/|www\.|\.(de|com|at|ch)\b/i.test(raw) && !/m²|kaufpreis/i.test(raw);
   if(!raw){ showCantRead(false); return; }
-  const parsed=parseListing(raw);
-  if(parsed){ run(parsed); }        // real: text with a detectable price
-  else { showCantRead(looksUrl); }  // honest: cannot read a bare link
+
+  // 1) Reiner Text mit Preis -> direkt auslesen (funktioniert immer)
+  const direct=parseListing(raw);
+  const looksUrl=/^https?:\/\/\S+/i.test(raw) || /(?:www\.)?\w[\w-]*\.(de|com|at|ch|net|org)\b/i.test(raw);
+  if(direct && direct.price && !looksUrl){ run(direct); return; }
+
+  // 2) URL -> Live-Read versuchen
+  if(looksUrl){
+    const url=(raw.match(/https?:\/\/\S+/i)||[null])[0] || ("https://"+raw.replace(/^\/+/,""));
+    showReading();
+    const obj=await fetchListing(url);
+    if(obj && obj.price){ run(obj); }
+    else{ showCantRead(true); }
+    return;
+  }
+
+  // 3) Text ohne erkennbaren Preis
+  if(direct && direct.price){ run(direct); } else { showCantRead(false); }
 });
 document.querySelectorAll(".chip").forEach(c=>c.addEventListener("click",()=>{
   A={feesPct:10,equityPct:20,rate:3.6,amort:2,costsPct:22,rentg:2,valg:2,vac:3};
