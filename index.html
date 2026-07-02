@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>RechnungsPro – Rechnungen in Sekunden</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-2: #1e222b;
+    --border: #2a2f3a;
+    --text: #e7e9ee;
+    --muted: #9aa3b2;
+    --accent: #4f7cff;
+    --accent-2: #3ad29f;
+    --danger: #ff5c72;
+    --radius: 14px;
+    --shadow: 0 10px 30px rgba(0,0,0,.35);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  header.app {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, #12151c, #0f1115);
+    position: sticky; top: 0; z-index: 10;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; }
+  .brand .dot { width: 12px; height: 12px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2)); box-shadow: 0 0 12px var(--accent); }
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    font: inherit; cursor: pointer; border: 1px solid var(--border);
+    background: var(--panel-2); color: var(--text);
+    padding: 10px 14px; border-radius: 10px; transition: .15s;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.primary:hover { filter: brightness(1.08); }
+  button.ghost { background: transparent; }
+  button.danger { color: var(--danger); }
+
+  .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 20px; max-width: 1200px; margin: 0 auto; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow); }
+  .card h2 { margin: 0 0 14px; font-size: 15px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 520px) { .grid2 { grid-template-columns: 1fr; } }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 4px; }
+  input, textarea, select {
+    width: 100%; font: inherit; color: var(--text);
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 12px; margin-bottom: 12px;
+  }
+  input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
+  textarea { resize: vertical; min-height: 64px; }
+
+  table.items { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+  table.items th { text-align: left; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; padding: 6px 6px; }
+  table.items td { padding: 4px 6px; vertical-align: top; }
+  table.items input { margin: 0; }
+  .col-qty { width: 70px; } .col-price { width: 110px; } .col-vat { width: 90px; } .col-x { width: 34px; }
+  .row-remove { background: transparent; border: none; color: var(--danger); font-size: 18px; padding: 6px; }
+
+  .totals { margin-top: 10px; border-top: 1px dashed var(--border); padding-top: 12px; }
+  .totals .line { display: flex; justify-content: space-between; padding: 3px 0; color: var(--muted); }
+  .totals .line.grand { color: var(--text); font-size: 20px; font-weight: 700; border-top: 1px solid var(--border); margin-top: 6px; padding-top: 10px; }
+
+  /* ---- Invoice preview ---- */
+  .preview-wrap { background: #f4f5f7; border-radius: var(--radius); padding: 0; overflow: hidden; }
+  .invoice {
+    background: #fff; color: #1a1d24; padding: 40px; font-size: 14px;
+    min-height: 500px;
+  }
+  .invoice .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin-bottom: 30px; }
+  .invoice .logo { font-size: 22px; font-weight: 800; color: #4f7cff; }
+  .invoice .company-small { font-size: 12px; color: #555; margin-top: 6px; white-space: pre-line; }
+  .invoice h1 { font-size: 28px; margin: 0 0 4px; letter-spacing: .02em; }
+  .invoice .meta { text-align: right; font-size: 12px; color: #555; }
+  .invoice .meta b { color: #1a1d24; }
+  .invoice .parties { display: flex; justify-content: space-between; gap: 30px; margin-bottom: 26px; }
+  .invoice .parties .box small { text-transform: uppercase; letter-spacing: .08em; color: #888; font-size: 10px; }
+  .invoice .parties .box .val { margin-top: 4px; white-space: pre-line; }
+  .invoice table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+  .invoice table th { text-align: left; border-bottom: 2px solid #1a1d24; padding: 8px 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+  .invoice table td { padding: 8px 6px; border-bottom: 1px solid #eee; }
+  .invoice table td.num, .invoice table th.num { text-align: right; }
+  .invoice .sum { width: 280px; margin-left: auto; }
+  .invoice .sum .line { display: flex; justify-content: space-between; padding: 4px 0; color: #555; }
+  .invoice .sum .line.grand { color: #1a1d24; font-weight: 800; font-size: 18px; border-top: 2px solid #1a1d24; margin-top: 6px; padding-top: 10px; }
+  .invoice .notes { margin-top: 30px; font-size: 12px; color: #555; white-space: pre-line; }
+  .invoice .footer { margin-top: 40px; border-top: 1px solid #eee; padding-top: 12px; font-size: 11px; color: #999; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+  .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+  /* ---- Print ---- */
+  @media print {
+    body { background: #fff; }
+    header.app, .editor-col, .toolbar, .preview-tools { display: none !important; }
+    .layout { display: block; padding: 0; max-width: none; }
+    .preview-wrap { background: #fff; border-radius: 0; }
+    .invoice { padding: 0; }
+    .card { border: none; box-shadow: none; padding: 0; }
+  }
+</style>
+</head>
+<body>
+<header class="app">
+  <div class="brand"><span class="dot"></span> RechnungsPro</div>
+  <div class="toolbar">
+    <button class="ghost" id="btn-sample">Beispiel laden</button>
+    <button class="ghost danger" id="btn-reset">Zurücksetzen</button>
+    <button class="primary" id="btn-print">📄 Als PDF drucken</button>
+  </div>
+</header>
+
+<div class="layout">
+  <!-- EDITOR -->
+  <div class="editor-col">
+    <div class="card">
+      <h2>Dein Unternehmen</h2>
+      <label>Firmenname / Name</label>
+      <input id="f-company" placeholder="Max Mustermann Design" />
+      <label>Adresse & Kontakt</label>
+      <textarea id="f-company-details" placeholder="Musterstraße 1&#10;12345 Musterstadt&#10;kontakt@beispiel.de&#10;USt-IdNr: DE123456789"></textarea>
+    </div>
+
+    <div class="card">
+      <h2>Kunde</h2>
+      <label>Name / Firma</label>
+      <input id="f-client" placeholder="Beispiel GmbH" />
+      <label>Adresse</label>
+      <textarea id="f-client-details" placeholder="Kundenstraße 5&#10;54321 Kundenstadt"></textarea>
+    </div>
+
+    <div class="card">
+      <h2>Rechnungsdaten</h2>
+      <div class="grid2">
+        <div>
+          <label>Rechnungsnummer</label>
+          <input id="f-number" placeholder="2026-001" />
+        </div>
+        <div>
+          <label>Datum</label>
+          <input id="f-date" type="date" />
+        </div>
+        <div>
+          <label>Leistungsdatum / -zeitraum</label>
+          <input id="f-service-date" placeholder="Juni 2026" />
+        </div>
+        <div>
+          <label>Fällig bis</label>
+          <input id="f-due" type="date" />
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Positionen</h2>
+      <table class="items">
+        <thead>
+          <tr>
+            <th>Beschreibung</th>
+            <th class="col-qty">Menge</th>
+            <th class="col-price">Einzelpreis €</th>
+            <th class="col-vat">MwSt %</th>
+            <th class="col-x"></th>
+          </tr>
+        </thead>
+        <tbody id="items-body"></tbody>
+      </table>
+      <button class="ghost" id="btn-add">+ Position hinzufügen</button>
+
+      <div class="totals" id="editor-totals"></div>
+    </div>
+
+    <div class="card">
+      <h2>Fußtext / Zahlungshinweise</h2>
+      <textarea id="f-notes" placeholder="Zahlbar innerhalb von 14 Tagen ohne Abzug.&#10;IBAN: DE00 0000 0000 0000 0000 00&#10;Vielen Dank für Ihr Vertrauen!"></textarea>
+      <p class="hint">Alle Eingaben werden automatisch lokal im Browser gespeichert. Nichts verlässt dein Gerät.</p>
+    </div>
+  </div>
+
+  <!-- PREVIEW -->
+  <div>
+    <div class="preview-wrap">
+      <div class="invoice" id="invoice">
+        <div class="top">
+          <div>
+            <div class="logo" id="p-logo">Dein Unternehmen</div>
+            <div class="company-small" id="p-company-details"></div>
+          </div>
+          <div class="meta">
+            <h1>RECHNUNG</h1>
+            <div>Nr. <b id="p-number">—</b></div>
+            <div>Datum: <b id="p-date">—</b></div>
+            <div id="p-service-wrap" style="display:none">Leistung: <b id="p-service-date"></b></div>
+            <div id="p-due-wrap" style="display:none">Fällig: <b id="p-due"></b></div>
+          </div>
+        </div>
+
+        <div class="parties">
+          <div class="box">
+            <small>Rechnung an</small>
+            <div class="val"><b id="p-client">Kunde</b><div id="p-client-details"></div></div>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Beschreibung</th>
+              <th class="num">Menge</th>
+              <th class="num">Einzelpreis</th>
+              <th class="num">MwSt</th>
+              <th class="num">Betrag</th>
+            </tr>
+          </thead>
+          <tbody id="p-items"></tbody>
+        </table>
+
+        <div class="sum" id="p-sum"></div>
+
+        <div class="notes" id="p-notes"></div>
+
+        <div class="footer">
+          <span id="p-footer-company">Dein Unternehmen</span>
+          <span>Erstellt mit RechnungsPro</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const STORAGE_KEY = "rechnungspro_v1";
+
+const fields = ["company","company-details","client","client-details","number","date","service-date","due","notes"];
+let items = [];
+
+function fmt(n) {
+  return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(n || 0);
+}
+function fmtDate(v) {
+  if (!v) return "";
+  const d = new Date(v);
+  if (isNaN(d)) return v;
+  return d.toLocaleDateString("de-DE");
+}
+
+function addItem(item = { desc: "", qty: 1, price: 0, vat: 19 }) {
+  items.push(item);
+  renderItems();
+  render();
+  save();
+}
+
+function renderItems() {
+  const body = $("items-body");
+  body.innerHTML = "";
+  items.forEach((it, i) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><input data-i="${i}" data-k="desc" value="${escapeAttr(it.desc)}" placeholder="Leistung / Produkt" /></td>
+      <td class="col-qty"><input data-i="${i}" data-k="qty" type="number" step="any" value="${it.qty}" /></td>
+      <td class="col-price"><input data-i="${i}" data-k="price" type="number" step="any" value="${it.price}" /></td>
+      <td class="col-vat"><input data-i="${i}" data-k="vat" type="number" step="any" value="${it.vat}" /></td>
+      <td class="col-x"><button class="row-remove" data-remove="${i}" title="Entfernen">×</button></td>`;
+    body.appendChild(tr);
+  });
+}
+
+function escapeAttr(s) { return String(s).replace(/"/g, "&quot;"); }
+function escapeHtml(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+function computeTotals() {
+  let net = 0; const vatMap = {};
+  items.forEach((it) => {
+    const line = (parseFloat(it.qty) || 0) * (parseFloat(it.price) || 0);
+    net += line;
+    const rate = parseFloat(it.vat) || 0;
+    vatMap[rate] = (vatMap[rate] || 0) + line * rate / 100;
+  });
+  const vatTotal = Object.values(vatMap).reduce((a, b) => a + b, 0);
+  return { net, vatMap, vatTotal, gross: net + vatTotal };
+}
+
+function render() {
+  $("p-logo").textContent = $("f-company").value || "Dein Unternehmen";
+  $("p-footer-company").textContent = $("f-company").value || "Dein Unternehmen";
+  $("p-company-details").textContent = $("f-company-details").value;
+  $("p-client").textContent = $("f-client").value || "Kunde";
+  $("p-client-details").textContent = $("f-client-details").value;
+  $("p-number").textContent = $("f-number").value || "—";
+  $("p-date").textContent = fmtDate($("f-date").value) || "—";
+  $("p-notes").textContent = $("f-notes").value;
+
+  toggleMeta("service-date", "p-service-wrap", "p-service-date", $("f-service-date").value);
+  toggleMeta("due", "p-due-wrap", "p-due", fmtDate($("f-due").value));
+
+  // preview items
+  const pItems = $("p-items");
+  pItems.innerHTML = "";
+  items.forEach((it) => {
+    const line = (parseFloat(it.qty) || 0) * (parseFloat(it.price) || 0);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${escapeHtml(it.desc || "—")}</td>
+      <td class="num">${parseFloat(it.qty) || 0}</td>
+      <td class="num">${fmt(parseFloat(it.price) || 0)}</td>
+      <td class="num">${parseFloat(it.vat) || 0}%</td>
+      <td class="num">${fmt(line)}</td>`;
+    pItems.appendChild(tr);
+  });
+
+  const t = computeTotals();
+  let sumHtml = `<div class="line"><span>Nettobetrag</span><span>${fmt(t.net)}</span></div>`;
+  Object.keys(t.vatMap).sort((a,b)=>a-b).forEach((rate) => {
+    if (t.vatMap[rate] > 0) sumHtml += `<div class="line"><span>zzgl. ${rate}% MwSt</span><span>${fmt(t.vatMap[rate])}</span></div>`;
+  });
+  sumHtml += `<div class="line grand"><span>Gesamt</span><span>${fmt(t.gross)}</span></div>`;
+  $("p-sum").innerHTML = sumHtml;
+
+  // editor totals
+  $("editor-totals").innerHTML = `
+    <div class="line"><span>Netto</span><span>${fmt(t.net)}</span></div>
+    <div class="line"><span>MwSt</span><span>${fmt(t.vatTotal)}</span></div>
+    <div class="line grand"><span>Gesamt</span><span>${fmt(t.gross)}</span></div>`;
+}
+
+function toggleMeta(fieldId, wrapId, valId, value) {
+  if (value) { $(wrapId).style.display = ""; $(valId).textContent = value; }
+  else { $(wrapId).style.display = "none"; }
+}
+
+function save() {
+  const data = { fields: {}, items };
+  fields.forEach((f) => data.fields[f] = $("f-" + f).value);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+function load() {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) return false;
+  try {
+    const data = JSON.parse(raw);
+    fields.forEach((f) => { if (data.fields[f] != null) $("f-" + f).value = data.fields[f]; });
+    items = data.items || [];
+    return true;
+  } catch { return false; }
+}
+
+function loadSample() {
+  $("f-company").value = "Max Mustermann Design";
+  $("f-company-details").value = "Musterstraße 1\n12345 Musterstadt\nkontakt@mustermann.de\nUSt-IdNr: DE123456789";
+  $("f-client").value = "Beispiel GmbH";
+  $("f-client-details").value = "Kundenstraße 5\n54321 Kundenstadt";
+  $("f-number").value = "2026-001";
+  $("f-date").value = new Date().toISOString().slice(0, 10);
+  $("f-service-date").value = "Juni 2026";
+  const due = new Date(); due.setDate(due.getDate() + 14);
+  $("f-due").value = due.toISOString().slice(0, 10);
+  $("f-notes").value = "Zahlbar innerhalb von 14 Tagen ohne Abzug.\nIBAN: DE00 0000 0000 0000 0000 00\nVielen Dank für Ihr Vertrauen!";
+  items = [
+    { desc: "Webdesign – Startseite", qty: 1, price: 1200, vat: 19 },
+    { desc: "Logo-Entwicklung", qty: 1, price: 450, vat: 19 },
+    { desc: "Stockfotos (Lizenz)", qty: 5, price: 12, vat: 7 },
+  ];
+  renderItems(); render(); save();
+}
+
+// events
+document.addEventListener("input", (e) => {
+  const t = e.target;
+  if (t.dataset && t.dataset.i != null) {
+    items[t.dataset.i][t.dataset.k] = t.value;
+    render(); save();
+  } else if (t.id && t.id.startsWith("f-")) {
+    render(); save();
+  }
+});
+document.addEventListener("click", (e) => {
+  if (e.target.dataset && e.target.dataset.remove != null) {
+    items.splice(e.target.dataset.remove, 1);
+    renderItems(); render(); save();
+  }
+});
+$("btn-add").addEventListener("click", () => addItem());
+$("btn-print").addEventListener("click", () => window.print());
+$("btn-sample").addEventListener("click", loadSample);
+$("btn-reset").addEventListener("click", () => {
+  if (!confirm("Alle Daten zurücksetzen?")) return;
+  localStorage.removeItem(STORAGE_KEY);
+  fields.forEach((f) => $("f-" + f).value = "");
+  items = []; renderItems(); render();
+});
+
+// init
+if (load()) { renderItems(); render(); }
+else { loadSample(); }
+</script>
+</body>
+</html>
